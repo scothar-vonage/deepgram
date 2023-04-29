@@ -32,7 +32,7 @@ let silenceDuration = 1000; // Duration of silence in milliseconds
 let db = [];
 
 //your ngrok domain name
-const url = "e165-98-37-112-87.ngrok-free.app";
+const url = process.env.DOMAIN;
 
 app.use(json());
 app.get("/input", (req, res) => {
