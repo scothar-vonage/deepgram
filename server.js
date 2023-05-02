@@ -29,8 +29,12 @@ let listenDuration;
 let silenceStart = null;
 let silenceDuration = 1000; // Duration of silence in milliseconds
 
+//Deepgram event handler configured for messages?
+let deepgramHandlers = false;
+
 let db = [];
-let transcript_result = "";
+let transcript_result = [];
+let transcript_interim = "";
 
 let dgs = null;
 
@@ -48,18 +52,8 @@ app.get("/input", (req, res) => {
   const ret = {
     utterance_id: uniqueId,
   };
-  try {
-    dgs = deepgram.transcription.live({
-      punctuate: true,
-      interim_results: true,
-      encoding: "linear16",
-      sample_rate: 16000,
-      numerals: true,
-      endpointing: false,
-    });
-  } catch (e) {
-    console.log(e);
-  }
+
+  createDgsSocket();
 
   console.log(
     `Starting listening for ID: ${uniqueId} for ${listenDuration}ms and silence of ${silenceDuration}ms`
@@ -99,86 +93,103 @@ expressWs.getWss().on("connection", function (ws) {
 });
 
 app.ws("/socket", (ws, req) => {
-  let dgs;
-  if (listening) {
-    try {
-      dgs.addListener("open", () => {
-        console.log("deepgramSocket opened!");
-      });
-
-      ws.on("message", (msg) => {
-        const currentTime = new Date().getTime();
-
+  try {
+    ws.on("message", (msg) => {
+      const currentTime = new Date().getTime();
+      if (listening && deepgramHandlers) {
         //Timeout
         if (currentTime - listenStart > listenDuration) {
           console.log("Listen timeout expired.");
-          console.log(`Final Transcript:\n${transcript_result}`);
           stopListening();
         } else {
           processMedia(msg);
 
-          if (dgs.getReadyState() == 1) {
+          if (dgs && dgs.getReadyState() == 1) {
             dgs.send(msg);
           } else {
             if (listening) {
               stopListening();
             }
-            console.error(
-              "Deepgram socket not ready. State: ",
-              dgs.getReadyState()
-            );
+
+            console.error("Deepgram socket not ready");
           }
         }
-      });
-
-      dgs.addListener("transcriptReceived", (transcription) => {
-        console.log("Got a dgs message");
-        try {
-          const received = JSON.parse(transcription);
-
-          if (received.channel) {
-            const transcript = received.channel.alternatives[0].transcript;
-            if (transcript) {
-              console.log(transcript);
-
-              if (received.is_final) {
-                console.log("Adding complete part of transcript");
-                transcript_result += transcript;
-              }
-            } else {
-              console.log(`Empty transcript?\n${transcription}`);
-            }
-          } else {
-            console.log(`Non-transcript message: ${transcription}`);
-          }
-        } catch (e) {
-          console.log(e);
-          console.log(transcription);
-        }
-      });
-
-      // dgs.addListener("close", () => {
-      //   if (!ws) {
-      //     return;
-      //   }
-      //   stopListening();
-      //   console.log("***********Connection closed. Reopening***********");
-      //   dgs = deepgram.transcription.live({
-      //     punctuate: true,
-      //     interim_results: false,
-      //     encoding: "linear16",
-      //     sample_rate: 16000,
-      //   });
-      // });
-    } catch (e) {
-      console.log(e);
-    }
+      }
+    });
+  } catch (e) {
+    console.log(e);
   }
 });
 
 const port = 3000;
 app.listen(port, () => console.log(`Listening on port ${port}`));
 
+function createDgsSocket() {
+  try {
+    console.log("Creating Deepgram Socket connection.");
+    dgs = deepgram.transcription.live({
+      punctuate: true,
+      interim_results: true,
+      encoding: "linear16",
+      sample_rate: 16000,
+      numerals: true,
+      endpointing: false,
+    });
+  } catch (e) {
+    console.log(e);
+  }
+
+  addDeepgramListeners();
+}
+
+function addDeepgramListeners() {
+  if (deepgramHandlers || !listening) {
+    return;
+  }
+
+  dgs.addListener("open", () => {
+    console.log("deepgramSocket opened!");
+    deepgramHandlers = true;
+  });
+
+  dgs.addListener("transcriptReceived", (transcription) => {
+    console.log("Got a dgs message");
+    try {
+      const received = JSON.parse(transcription);
+
+      if (received.channel) {
+        const transcript = received.channel.alternatives[0].transcript;
+        if (transcript) {
+          transcript_interim = transcript;
+          console.log(`Interim transcript: ${transcript_interim}`);
+
+          if (received.is_final) {
+            console.log("Adding complete part of transcript");
+            transcript_result.push(transcript);
+            transcript_interim = "";
+            console.log(transcript_result);
+          }
+        } else {
+          console.log(`Empty transcript?\n${transcription}`);
+        }
+      } else {
+        console.log(`Non-transcript message: ${transcription}`);
+      }
+    } catch (e) {
+      console.log(e);
+      console.log(transcription);
+    }
+  });
+
+  dgs.addListener("close", () => {
+    console.log("Deepgram socket closed");
+    console.log(transcript_result, transcript_interim);
+    stopListening();
+
+    deepgramHandlers = false;
+    dgs = null;
+  });
+}
 function processMedia(msg) {
   const audioBuffer = new AudioBuffer({
     numberOfChannels: 1,
@@ -226,9 +237,20 @@ function generateUniqueId() {
 }
 
 function stopListening() {
+  console.log("Stop Listening");
+
+  if (transcript_interim.length > 0) {
+    transcript_result.push(transcript_interim);
+  }
+
+  if (transcript_result.length > 0) {
+    console.log(`Final Transcript:\n${transcript_result.toString()}`);
+  }
+
   listening = false;
   listenStart = null;
   listenDuration = 1000;
   silenceStart = null;
-  transcript_result = "";
+  transcript_result = [];
+  transcript_interim = "";
 }
