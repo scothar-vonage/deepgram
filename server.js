@@ -32,9 +32,10 @@ let silenceDuration = 1000; // Duration of silence in milliseconds
 //Deepgram event handler configured for messages?
 let deepgramHandlers = false;
 
-let db = [];
+let utterance_db = [];
 let transcript_result = [];
 let transcript_interim = "";
+let uniqueId = "";
 
 let dgs = null;
 
@@ -42,13 +43,25 @@ let dgs = null;
 const url = process.env.DOMAIN;
 
 app.use(json());
+app.get("/transcript/:transcriptId", (req, res) => {
+  if (utterance_db.length > 0) {
+    const rec = utterance_db.find((item) => {
+      item.key === req.params.transcriptId;
+      const t = { transcriptId: item.key, transcript: item.transcript };
+      res.send(t);
+    });
+  } else {
+    res.send("not found");
+  }
+});
+
 app.get("/input", (req, res) => {
   listening = true;
   listenStart = new Date().getTime();
   listenDuration = req.query.timeout;
   silenceDuration = req.query.max_silence;
 
-  const uniqueId = "U" + generateUniqueId().replace(/-/g, "");
+  uniqueId = "U" + generateUniqueId().replace(/-/g, "");
   const ret = {
     utterance_id: uniqueId,
   };
@@ -243,9 +256,15 @@ function stopListening() {
     transcript_result.push(transcript_interim);
   }
 
+  const transcript_string = transcript_result.toString();
   if (transcript_result.length > 0) {
-    console.log(`Final Transcript:\n${transcript_result.toString()}`);
+    console.log(`Final Transcript:\n${transcript_string}`);
+    if (uniqueId && uniqueId.length > 0) {
+      const k = { key: uniqueId, transcript: transcript_string };
+      utterance_db.push(k);
+    }
   }
+  console.log(utterance_db);
 
   listening = false;
   listenStart = null;
@@ -253,4 +272,5 @@ function stopListening() {
   silenceStart = null;
   transcript_result = [];
   transcript_interim = "";
+  uniqueId = "";
 }
