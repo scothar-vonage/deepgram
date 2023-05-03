@@ -29,7 +29,7 @@ let listenDuration;
 let silenceStart = null;
 let silenceDuration = 1000; // Duration of silence in milliseconds
 
-//Deepgram event handler configured for messages?
+//Deepgram event handlers configured?
 let deepgramHandlers = false;
 
 let utterance_db = [];
@@ -39,19 +39,33 @@ let uniqueId = "";
 
 let dgs = null;
 
-//your ngrok domain name
 const url = process.env.DOMAIN;
 
 app.use(json());
-app.get("/transcript/:transcriptId", (req, res) => {
+
+app.get("/transcripts", (req, res) => {
   if (utterance_db.length > 0) {
-    const rec = utterance_db.find((item) => {
-      item.key === req.params.transcriptId;
-      const t = { transcriptId: item.key, transcript: item.transcript };
-      res.send(t);
-    });
+    return res.send(utterance_db);
   } else {
-    res.send("not found");
+    return res.send("not found");
+  }
+});
+
+app.get("/transcripts/id/:transcriptId", (req, res) => {
+  const id = req.params.transcriptId;
+
+  if (utterance_db.length > 0) {
+    const rec = utterance_db.find((item) => item.key === id);
+
+    if (rec) {
+      console.log(`Found ${rec.key}`);
+      const t = { transcriptId: rec.key, transcript: rec.transcript };
+      return res.send(t);
+    } else {
+      return res.send(`TranscriptId ${id} not found`);
+    }
+  } else {
+    return res.send(`TranscriptId ${id} not found`);
   }
 });
 
@@ -141,7 +155,7 @@ function createDgsSocket() {
   try {
     console.log("Creating Deepgram Socket connection.");
     dgs = deepgram.transcription.live({
-      punctuate: true,
+      punctuate: false,
       interim_results: true,
       encoding: "linear16",
       sample_rate: 16000,
@@ -200,7 +214,6 @@ function addDeepgramListeners() {
     stopListening();
 
     deepgramHandlers = false;
-    dgs = null;
   });
 }
 function processMedia(msg) {
@@ -273,4 +286,6 @@ function stopListening() {
   transcript_result = [];
   transcript_interim = "";
   uniqueId = "";
+  dgs = null;
+  deepgramHandlers = false;
 }
