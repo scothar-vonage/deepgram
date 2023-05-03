@@ -1,6 +1,8 @@
 # Overview
 This is a websocket integration to Deepgram. The basic operation is that this code will create the connection to Deepgram when a call is answered. After that, you can start transcribing by calling the `input` endpoint, and then fetch the transcription by calling the `transcriptions` endpoint. You can call `input` multiple times on the same call--this allows you to create an IVR-like application with multiple steps which collect speech, without streaming everything to Deepgram.
 
+After each transcription is complete, it is read back to the caller via TTS.
+
 
 This project assumes that:
    1. You have a Deepgram API Key. You can get one [here](https://developers.deepgram.com/), if you don't.
