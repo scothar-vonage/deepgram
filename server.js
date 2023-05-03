@@ -1,5 +1,6 @@
 "use strict";
 
+import { Vonage } from "@vonage/server-sdk";
 import { v4 as uuidv4 } from "uuid";
 import express from "express";
 import bp from "body-parser";
@@ -32,20 +33,35 @@ let silenceDuration = 1000; // Duration of silence in milliseconds
 //Deepgram event handlers configured?
 let deepgramHandlers = false;
 
-let utterance_db = [];
-let transcript_result = [];
-let transcript_interim = "";
+let utteranceDb = [];
+let transcriptResult = [];
+let transcriptInterim = "";
 let uniqueId = "";
+let transcriptComplete = false;
+let tts = "";
+
+let callUuid = "";
 
 let dgs = null;
 
 const url = process.env.DOMAIN;
 
+const vonage = new Vonage(
+  {
+    apiKey: process.env.VONAGE_API_KEY,
+    apiSecret: process.env.VONAGE_API_SECRET,
+    applicationId: process.env.VONAGE_APPLICATION_ID,
+    privateKey: process.env.VONAGE_PRIVATE_KEY,
+  },
+  { debug: true }
+);
+
 app.use(json());
+app.use(express.urlencoded({ extended: true }));
 
 app.get("/transcripts", (req, res) => {
-  if (utterance_db.length > 0) {
-    return res.send(utterance_db);
+  if (utteranceDb.length > 0) {
+    return res.send(utteranceDb);
   } else {
     return res.send("not found");
   }
@@ -54,8 +70,8 @@ app.get("/transcripts", (req, res) => {
 app.get("/transcripts/id/:transcriptId", (req, res) => {
   const id = req.params.transcriptId;
 
-  if (utterance_db.length > 0) {
-    const rec = utterance_db.find((item) => item.key === id);
+  if (utteranceDb.length > 0) {
+    const rec = utteranceDb.find((item) => item.key === id);
 
     if (rec) {
       console.log(`Found ${rec.key}`);
@@ -75,9 +91,9 @@ app.get("/input", (req, res) => {
   listenDuration = req.query.timeout;
   silenceDuration = req.query.max_silence;
 
-  uniqueId = "U" + generateUniqueId().replace(/-/g, "");
+  uniqueId = "T" + generateUniqueId().replace(/-/g, "");
   const ret = {
-    utterance_id: uniqueId,
+    transcript_id: uniqueId,
   };
 
   createDgsSocket();
@@ -88,7 +104,7 @@ app.get("/input", (req, res) => {
   res.status(200).json(ret);
 });
 
-app.get("/answer", (req, res) => {
+app.post("/answer", (req, res) => {
   let nccoResponse = [
     {
       action: "talk",
@@ -106,7 +122,9 @@ app.get("/answer", (req, res) => {
       ],
     },
   ];
-
+  callUuid = req.body.uuid;
+  console.log("###############################");
+  console.log(`UUID: ${req.body.uuid}`);
   res.status(200).json(nccoResponse);
 });
 
@@ -122,6 +140,12 @@ expressWs.getWss().on("connection", function (ws) {
 app.ws("/socket", (ws, req) => {
   try {
     ws.on("message", (msg) => {
+      if (transcriptComplete && transcriptResult.length > 0) {
+        playTts(callUuid, transcriptResult.toString());
+        transcriptComplete = false;
+        transcriptResult = [];
+      }
+
       const currentTime = new Date().getTime();
       if (listening && deepgramHandlers) {
         //Timeout
@@ -187,14 +211,14 @@ function addDeepgramListeners() {
       if (received.channel) {
         const transcript = received.channel.alternatives[0].transcript;
         if (transcript) {
-          transcript_interim = transcript;
-          console.log(`Interim transcript: ${transcript_interim}`);
+          transcriptInterim = transcript;
+          console.log(`Interim transcript: ${transcriptInterim}`);
 
           if (received.is_final) {
             console.log("Adding complete part of transcript");
-            transcript_result.push(transcript);
-            transcript_interim = "";
-            console.log(transcript_result);
+            transcriptResult.push(transcript);
+            transcriptInterim = "";
+            console.log(transcriptResult);
           }
         } else {
           console.log(`Empty transcript?\n${transcription}`);
@@ -210,7 +234,7 @@ function addDeepgramListeners() {
 
   dgs.addListener("close", () => {
     console.log("Deepgram socket closed");
-    console.log(transcript_result, transcript_interim);
+    console.log(transcriptResult, transcriptInterim);
     stopListening();
 
     deepgramHandlers = false;
@@ -262,30 +286,36 @@ function generateUniqueId() {
   return uuidv4();
 }
 
+function playTts(uuid, str) {
+  console.log(`uuid: ${uuid}: playing: ${str}`);
+  vonage.voice.playTTS(uuid, { action: "talk", text: str });
+}
 function stopListening() {
   console.log("Stop Listening");
 
-  if (transcript_interim.length > 0) {
-    transcript_result.push(transcript_interim);
+  if (transcriptInterim.length > 0) {
+    transcriptResult.push(transcriptInterim);
   }
 
-  const transcript_string = transcript_result.toString();
-  if (transcript_result.length > 0) {
+  const transcript_string = transcriptResult.toString();
+  if (transcriptResult.length > 0) {
     console.log(`Final Transcript:\n${transcript_string}`);
+    transcriptComplete = true;
     if (uniqueId && uniqueId.length > 0) {
       const k = { key: uniqueId, transcript: transcript_string };
-      utterance_db.push(k);
+      utteranceDb.push(k);
     }
   }
-  console.log(utterance_db);
+  console.log(utteranceDb);
 
   listening = false;
   listenStart = null;
   listenDuration = 1000;
   silenceStart = null;
-  transcript_result = [];
-  transcript_interim = "";
+  //transcriptResult = [];
+  transcriptInterim = "";
   uniqueId = "";
+  tts = "";
   dgs = null;
   deepgramHandlers = false;
 }
