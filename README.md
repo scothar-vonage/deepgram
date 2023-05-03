@@ -2,7 +2,7 @@
 Websocket integration to deepgram. This project assumes that:
    1. You have a Deepgram API Key. You can get one [here](https://developers.deepgram.com/), if you don't.
    1. You have a Vonage number
-   1. The application connected to your Vonage has the `Answer` and `Event` webhooks pointed to whereever you're going to run this code.
+   1. The application connected to your Vonage has the `Answer` and `Event` webhooks pointed to wherever you're going to run this code.
 
 
 # Installation
