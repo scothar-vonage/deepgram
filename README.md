@@ -31,7 +31,12 @@ npm run dev
 ```
 
 1. Place a call into your Vonage number. 
-1. Once the call is established, open a browser (or Postman, or curl, or whatever) and send a `GET` request to your server:
+
+# Start Transcribing
+
+The server doesn't start streaming media to Deepgram until you tell it to. Once a call is established, you can begin the transcription by calling the `input` web service, as follows:
+
+## HTTP GET Request
 
 ``` 
 curl localhost:3000/input/?timeout=5000&max_silence=2000
@@ -42,9 +47,39 @@ Parameter | Description
 timeout|The time in milliseconds to listen for a response
 max_silence | Maximum time in milliseconds of silence before returning
 
+### Returns
+The `input` service will return an object with the `transcript_id` that you can use later to fetch the transcript.
 
+```
+{"transcript_id":"T9ff95ea45e634017930afe2387114199"}
+```
 
+# Fetch Transcriptions
 
+To fetch a single transcription, make an HTTP GET Request like this:
+
+```
+https://example.com/transcripts/id/T9ff95ea45e634017930afe2387114199
+```
+
+The response will look like this:
+```
+{"transcriptId":"T9ff95ea45e634017930afe2387114199","transcript":"I would like to confirm my appointment"}
+```
+
+# Fetch all Transcriptions
+
+```
+https://example.com/transcripts
+```
+
+The response will be an array of transcription objects:
+
+```
+[{"transcriptId":"T9ff95ea45e634017930afe2387114199","transcript":"I would like to confirm my appointment"}, {"transcriptId":"T5099fcba8a7043439474e22fb6933225","transcript":"Cancel my appointment"},
+{"transcriptId":"Tcbbe21685f70455984b9690a8a9767c6","transcript":"I need to reschedule"}]
+
+```
 
 
 
