@@ -134,7 +134,7 @@ app.post("/events", (req, res) => {
 });
 
 expressWs.getWss().on("connection", function (ws) {
-  console.log("Websocket connection is open");
+  //console.log("Websocket connection is open");
 });
 
 app.ws("/socket", (ws, req) => {
